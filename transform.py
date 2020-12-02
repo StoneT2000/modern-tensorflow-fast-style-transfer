@@ -41,7 +41,6 @@ def transform_net():
     x = residual_layer(x, 128, 3)
     x = residual_layer(x, 128, 3)
     x = residual_layer(x, 128, 3)
-    print(x)
     x = conv_transpose_layer(x, 64, 3, 2)
     x = conv_transpose_layer(x, 32, 3, 2)
     x = conv_layer(x, 3, 9, 1, False)
