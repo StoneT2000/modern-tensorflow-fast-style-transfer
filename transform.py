@@ -32,7 +32,7 @@ def transform_net():
     """
     feed forward transformation network
     """
-    inputs = tf.keras.Input((3, 256, 256))
+    inputs = tf.keras.Input((256, 256, 3))
     x = conv_layer(inputs, 32, 9, 1)
     x = conv_layer(x, 64, 3, 2)
     x = conv_layer(x, 128, 3, 2)
@@ -44,6 +44,6 @@ def transform_net():
     x = conv_transpose_layer(x, 64, 3, 2)
     x = conv_transpose_layer(x, 32, 3, 2)
     x = conv_layer(x, 3, 9, 1, False)
-    outputs = tf.nn.tanh(x) * 150 + 255/.2
+    outputs = tf.nn.tanh(x) * 150 + 255./2
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
