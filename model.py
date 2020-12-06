@@ -9,7 +9,7 @@ def get_vgg_model():
     )
 
     # create VGG model from the keras one but with explicit relu layers
-    inputs = layers.Input((224,224 ,3))
+    inputs = layers.Input((256, 256, 3))
     x = inputs
     for vgg_layer in vgg_model.layers:
         layer_name = vgg_layer.name
