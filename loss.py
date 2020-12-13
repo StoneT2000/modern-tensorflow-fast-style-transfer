@@ -6,16 +6,15 @@ CONTENT_LAYER = 'block4_conv2_relu'
 @tf.function
 def loss(transform_net, model_feature_extractor, content_targets, style_target, batch_size=1):
 
-    style_weight = 1e-5
-    feature_reconstruction_weight = 1e-2
-    tv_weight = 2e-1
+    style_weight = 1e2
+    feature_reconstruction_weight = 7.5e0
+    tv_weight = 2e2
 
     # calculate loss
     
 
     # speed up by transforming on original content first instead of using noise
     y_h = transform_net(content_targets / 255.0) # preds
-    
     content_targets = tf.keras.applications.vgg19.preprocess_input(content_targets)
     # content_targets = tf.image.resize(content_targets, (224, 224))
     
@@ -33,8 +32,7 @@ def loss(transform_net, model_feature_extractor, content_targets, style_target, 
     content_feature_y = features_y[CONTENT_LAYER]
     content_feature_y_h = features_y_h[CONTENT_LAYER]
     feature_map_size = content_feature_y.shape[1] * content_feature_y.shape[2] * content_feature_y.shape[3]
-    feature_reconstruction_loss = tf.nn.l2_loss(content_feature_y - content_feature_y_h) / feature_map_size
-    feature_reconstruction_loss *= feature_reconstruction_weight
+    feature_reconstruction_loss = feature_reconstruction_weight * (2 * tf.nn.l2_loss(content_feature_y_h - content_feature_y)) / feature_map_size
     feature_reconstruction_loss /= batch_size
     
 
@@ -46,12 +44,12 @@ def loss(transform_net, model_feature_extractor, content_targets, style_target, 
         style_feature_y_h = features_y_h[style_layer]
         gram_mat_y = gram_matrix(style_feature_y)
         gram_mat_y_h = gram_matrix(style_feature_y_h)
-        this_style_loss = tf.nn.l2_loss(gram_mat_y_h - gram_mat_y)
+        # why does lngstrom divide by gram_may_y.size?
+        this_style_loss = tf.nn.l2_loss(gram_mat_y_h - gram_mat_y) / _tensor_size(gram_mat_y)
         style_losses.append(this_style_loss)
-    style_loss = tf.reduce_sum(style_losses)/ len(STYLE_LAYERS) / batch_size
-    style_loss *= style_weight
+    style_loss = 2 * tf.reduce_sum(style_losses) * style_weight / batch_size
 
-    tv_loss = tv_weight* total_variation_loss(y_h) / batch_size / _tensor_size(y_h)
+    tv_loss = tv_weight * 2 * total_variation_loss(y_h) / batch_size
     return feature_reconstruction_loss, style_loss, tv_loss 
 
 @tf.function
@@ -59,12 +57,13 @@ def high_pass_x_y(image):
     x_var = image[:,:,1:,:] - image[:,:,:-1,:]
     y_var = image[:,1:,:,:] - image[:,:-1,:,:]
 
-    return x_var, y_var
+    return tf.nn.l2_loss(x_var), tf.nn.l2_loss(y_var)
 
 @tf.function
 def total_variation_loss(image):
     x_deltas, y_deltas = high_pass_x_y(image)
-    return tf.reduce_sum(tf.abs(x_deltas)) + tf.reduce_sum(tf.abs(y_deltas))
+    return x_deltas / _tensor_size(image[:,:,1:,:]) + y_deltas / _tensor_size(image[:,1:,:,:])
+    # return tf.reduce_sum(tf.abs(x_deltas)) + tf.reduce_sum(tf.abs(y_deltas))
 
 @tf.function
 def _tensor_size(tensor):
@@ -74,17 +73,8 @@ def _tensor_size(tensor):
 def gram_matrix(input_tensor):
     result = tf.linalg.einsum('bijc,bijd->bcd', input_tensor, input_tensor)
     input_shape = tf.shape(input_tensor)
-    return result/ _tensor_size(input_tensor)
-# def compute_gram_mat(feature_map):
-#     filters = feature_map.shape[3]
-#     kernel_w = feature_map.shape[1]
-#     kernel_h = feature_map.shape[2]
-#     psi = tf.reshape(feature_map, (feature_map.shape[0], filters, kernel_w * kernel_h))
-#     psi_t = tf.transpose(psi, perm=[0, 2, 1])
-#     print(psi_t.shape, psi.shape)
-    
-#     gram =  tf.matmul(, psi) / (filters * kernel_w * kernel_h)
-#     return gram
+    return result / tf.cast(input_shape[1] * input_shape[2] * input_shape[3], 'float32')
+
 @tf.function
 def grad(transform_net, model_feature_extractor, content_targets, style_target, batch_size=1):
     with tf.GradientTape() as tape:
