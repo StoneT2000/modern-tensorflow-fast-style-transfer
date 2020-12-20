@@ -22,7 +22,6 @@ def conv_layer(net, filters = 32, kernel_size = 3, strides = 1, with_relu = True
         padding='SAME',
         kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=STDDEV, seed=None)
     )(net)
-    # net = layers.BatchNormalization()(net)
     net = _instance_norm(net)
     if with_relu:
         net = tf.nn.relu(net)
@@ -32,7 +31,6 @@ def conv_transpose_layer(net, filters=32, kernel_size=3, strides=1):
     """
     Conv2D transpose layer that upsamples
     """
-     # TODO instance norm it later
     net = layers.Conv2DTranspose(
         filters, 
         kernel_size=kernel_size, 
@@ -40,11 +38,10 @@ def conv_transpose_layer(net, filters=32, kernel_size=3, strides=1):
         padding='SAME',
         kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=STDDEV, seed=None)
     )(net)
-    # net = layers.BatchNormalization()(net)
     net = _instance_norm(net)
     return tf.nn.relu(net)
 
-def _instance_norm(net, train=True):
+def _instance_norm(net):
     batch, rows, cols, channels = [i for i in net.get_shape()]
     var_shape = [channels]
     mu, sigma_sq = tf.nn.moments(x=net, axes=[1,2], keepdims=True)
@@ -73,3 +70,13 @@ def transform_net():
     outputs = tf.nn.tanh(x) * 150 + 255./2
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
+
+def restore_from_checkpoint(path):
+    """
+    restores transform net model from checkpoint for
+    """
+    restored_model = transform_net()
+    restored_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+    checkpoint = tf.train.Checkpoint(opt=restored_optimizer, net=restored_model)
+    checkpoint.restore(path)
+    return restored_model, restored_optimizer

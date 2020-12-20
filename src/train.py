@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from sklearn.utils import shuffle
 import cv2
 import pandas as pd
+import argparse
+
 
 def parse_image(img, size=(256, 256)):
     return tf.image.resize(img, size)
@@ -29,9 +31,9 @@ history = {
     "tv": [],
 }
 
-def train(transform_net, extractor, optimizer, style_target, content_paths, batch_size=32, epochs=1000):  
+def train(transform_net, optimizer, extractor, manager, style_target, content_paths, batch_size=32, epochs=1000):  
     """
-    content_paths is np array of paths to images  
+    train the transform network using the given optimizer, vgg19 feature-extractor, and style image and paths to content images
     """
     style_targets = np.expand_dims(style_target, axis=0)
     train_size = len(content_paths)
@@ -41,7 +43,7 @@ def train(transform_net, extractor, optimizer, style_target, content_paths, batc
         for step in range(0, train_size, batch_size):
             batch_paths = content_paths[step:step + batch_size]
             curr_batch_size = len(batch_paths)
-
+            
             image_batch = get_image_batch(batch_paths)
             losses, grads = grad(
               transform_net=transform_net, 
@@ -60,12 +62,13 @@ def train(transform_net, extractor, optimizer, style_target, content_paths, batc
             history['style'].append(losses[1])
             history['tv'].append(losses[2])
             optimizer_steps = optimizer.iterations.numpy()
-            print("Step: {}, TL: {} FR: {} Style: {} TV: {}".format(optimizer_steps,tl,
+            print("Step: {}, Total Loss: {} Feature Loss: {} Style Loss: {} TV Loss: {}".format(optimizer_steps,tl,
                                                     losses[0].numpy(), losses[1].numpy(), losses[2].numpy()))
             
-            if optimizer_steps % 200 == 1:
-                show_result("chicago.jpg", transform_net, extractor, style_target, save=True, savename="eval/{}.png".format(optimizer_steps), msg="Step {}".format(optimizer_steps))
-                # transform_net.save("eval_models/model_{}".format(optimizer_steps))
+            if optimizer_steps % 100 == 1:
+                show_result("chicago.jpg", transform_net, True, "eval/{}.png".format(optimizer_steps), "Step {}".format(optimizer_steps))
+                if manager:
+                    manager.save()
 
         print("Epoch: {} finished".format(epoch))
 
@@ -87,8 +90,56 @@ def show_result(path, transform_net, extractor, style_target, save=False, savena
       plt.savefig(savename)
       plt.close(fig)
 
-image_paths_df =pd.read_csv("train.csv", names=['path'])
-image_paths_df['path'] = image_paths_df['path'].apply(lambda x : ('train2014/' + x))
-image_paths = image_paths_df['path'].to_numpy()
+def main():
+    parser = argparse.ArgumentParser(description='Train a Fast Style Network')
+    parser.add_argument('--ckpt', type=str,
+                        help='checkpoint model to use to load and start training from')
+    parser.add_argument('--style', type=str,
+                        help='path to style image to use for styling')
+    args = parser.parse_args()
 
-optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+    # get the vgg19 feature extractor
+    vgg_model = get_vgg_model()
+    vgg_model_outputs_dir = dict([(layer.name, layer.output) for layer in vgg_model.layers])
+    extractor = tf.keras.Model(inputs=vgg_model.inputs, outputs=vgg_model_outputs_dir)
+    print("Created VGG19 Feature Extractor")
+
+    # get the image paths
+    image_paths_df = pd.read_csv("train.csv", names=['path'])
+    image_paths_df['path'] = image_paths_df['path'].apply(lambda x : ('train2014/' + x))
+    image_paths = image_paths_df['path'].to_numpy()
+
+    transform_net = None
+    optimizer = None
+
+    checkpoint_path = args.ckpt
+
+    if checkpoint_path:
+        restored_model = transform.transform_net()
+        restored_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+        checkpoint = tf.train.Checkpoint(opt=restored_optimizer, net=restored_model)
+        checkpoint.restore(checkpoint_path)
+        optimizer = restored_optimizer
+        transform_net = restored_model
+    else: 
+        optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+        transform_net = transform.transform_net()
+
+    # initialize checkpoint manager
+    ckpt = tf.train.Checkpoint(opt=optimizer, net=transform_net)
+    manager = tf.train.CheckpointManager(ckpt, './tf_ckpts', max_to_keep=3)
+
+    style = get_img(args.style)
+    train(
+        transform_net=transform_net, 
+        extractor=extractor,
+        manager=manager,
+        batch_size=32, 
+        epochs=int(10),
+        optimizer=optimizer, 
+        style_target=style,
+        content_paths=image_paths,
+    )
+
+if __name__ == '__main__':
+    main()
