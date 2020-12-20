@@ -7,3 +7,7 @@ Code is inspired by https://github.com/lengstrom/fast-style-transfer and improve
 There are still some bugs and it is a work in progress:
 
 Result so far after training for approximately 3 hours on google cloud colab with the free GPU environment:
+
+## Training
+
+First run `setup.sh` to download the MS-COCO dataset to use for training. This can take a while as it is > 10 gb in size.

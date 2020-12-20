@@ -5,28 +5,26 @@ CONTENT_LAYER = 'block4_conv2_relu'
 
 @tf.function
 def loss(transform_net, model_feature_extractor, content_targets, style_target, batch_size=1):
+    """
+    Calculate the losses of the transformation network using the vgg19 feature extractor and given content images and style image
+    """
 
-    style_weight = 1e2
-    feature_reconstruction_weight = 7.5e0
-    tv_weight = 2e2
 
-    # calculate loss
-    
+    style_weight = 1e0
+    feature_reconstruction_weight = 1e-1
+    tv_weight = 2e0    
 
     # speed up by transforming on original content first instead of using noise
     y_h = transform_net(content_targets / 255.0) # preds
     content_targets = tf.keras.applications.vgg19.preprocess_input(content_targets)
-    # content_targets = tf.image.resize(content_targets, (224, 224))
     
-    y_h = tf.keras.applications.vgg19.preprocess_input(y_h) # preds_pre
-    # y_h = tf.image.resize(y_h, (224, 224))
+    y_h = tf.keras.applications.vgg19.preprocess_input(y_h)
 
-    style_target = tf.keras.applications.vgg19.preprocess_input(style_target) # style_image_pre
-    # style_target = tf.image.resize(style_target, (224, 224))
+    style_target = tf.keras.applications.vgg19.preprocess_input(style_target)
     
-    features_y = model_feature_extractor(content_targets) # content_features
-    features_y_h = model_feature_extractor(y_h) # net
-    style_target_features_y = model_feature_extractor(style_target) # line 34 net
+    features_y = model_feature_extractor(content_targets)
+    features_y_h = model_feature_extractor(y_h) 
+    style_target_features_y = model_feature_extractor(style_target)
 
     # calculate feature reconstruction loss
     content_feature_y = features_y[CONTENT_LAYER]
@@ -44,8 +42,7 @@ def loss(transform_net, model_feature_extractor, content_targets, style_target, 
         style_feature_y_h = features_y_h[style_layer]
         gram_mat_y = gram_matrix(style_feature_y)
         gram_mat_y_h = gram_matrix(style_feature_y_h)
-        # why does lngstrom divide by gram_may_y.size?
-        this_style_loss = tf.nn.l2_loss(gram_mat_y_h - gram_mat_y) / _tensor_size(gram_mat_y)
+        this_style_loss = tf.nn.l2_loss(gram_mat_y_h - gram_mat_y)
         style_losses.append(this_style_loss)
     style_loss = 2 * tf.reduce_sum(style_losses) * style_weight / batch_size
 
@@ -63,20 +60,28 @@ def high_pass_x_y(image):
 def total_variation_loss(image):
     x_deltas, y_deltas = high_pass_x_y(image)
     return x_deltas / _tensor_size(image[:,:,1:,:]) + y_deltas / _tensor_size(image[:,1:,:,:])
-    # return tf.reduce_sum(tf.abs(x_deltas)) + tf.reduce_sum(tf.abs(y_deltas))
 
 @tf.function
 def _tensor_size(tensor):
+    """
+    Returns size of tensor, nice function borrowed from https://github.com/lengstrom/fast-style-transfer
+    """
     return tf.cast(tf.reduce_prod(tensor.get_shape()), 'float32')
 
 @tf.function
 def gram_matrix(input_tensor):
+    """
+    compute gram matrix
+    """
     result = tf.linalg.einsum('bijc,bijd->bcd', input_tensor, input_tensor)
     input_shape = tf.shape(input_tensor)
     return result / tf.cast(input_shape[1] * input_shape[2] * input_shape[3], 'float32')
 
 @tf.function
 def grad(transform_net, model_feature_extractor, content_targets, style_target, batch_size=1):
+    """
+    Using TF gradient tape to compute the graddients and return them, along with the 3 losses
+    """
     with tf.GradientTape() as tape:
         feature_reconstruction_loss, style_loss, tv_loss = loss(transform_net, model_feature_extractor, content_targets, style_target, batch_size)
         loss_value = feature_reconstruction_loss + style_loss + tv_loss 
