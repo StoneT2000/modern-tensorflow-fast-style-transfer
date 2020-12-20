@@ -40,9 +40,3 @@ def get_vgg_model():
     
     del vgg_model
     return new_vgg_model
-
-def parse_image(img, size=(224, 224)):
-    return tf.image.resize(img, size)
-def process_image_for_vgg_model(img):
-    processed = tf.keras.applications.vgg19.preprocess_input(img)
-    return parse_image(processed)

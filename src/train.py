@@ -8,6 +8,7 @@ from sklearn.utils import shuffle
 import cv2
 import pandas as pd
 import argparse
+import os
 
 
 def parse_image(img, size=(256, 256)):
@@ -93,10 +94,11 @@ def show_result(path, transform_net, extractor, style_target, save=False, savena
 def main():
     parser = argparse.ArgumentParser(description='Train a Fast Style Network')
     parser.add_argument('--ckpt', type=str,
-                        help='checkpoint model to use to load and start training from')
+                        help='checkpoint model to use to load and start training from. If none, training starts from scratch')
     parser.add_argument('--style', type=str,
                         help='path to style image to use for styling')
     args = parser.parse_args()
+    os.makedirs("./tf_ckpts", mode=0o777, exist_ok=True)
 
     # get the vgg19 feature extractor
     vgg_model = get_vgg_model()
